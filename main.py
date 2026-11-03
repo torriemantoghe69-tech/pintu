@@ -155,16 +155,21 @@ class PuzzleGame:
             ((t, t + ch), (t, t), (-1, 0), left),
         ]
         outline = []
+        seams = []
         for edge_index, (p_start, p_end, normal, protrudes) in enumerate(edges):
             pts = self._edge_points(p_start, p_end, normal, protrudes, t)
             if edge_index == 0:
                 outline.extend(pts)
             else:
                 outline.extend(pts[1:])
+            # 只保留拼图内部相邻边的缝线，最外侧边缘不描白边。
+            if protrudes is not None:
+                seams.append([(px / scale, py / scale) for px, py in pts])
         draw.polygon(outline, fill=255)
         mask = mask.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
         crop.putalpha(mask)
-        return pygame.image.fromstring(crop.tobytes(), crop.size, "RGBA").convert_alpha()
+        surface = pygame.image.fromstring(crop.tobytes(), crop.size, "RGBA").convert_alpha()
+        return surface, seams
 
     def build_pieces(self):
         image = ImageOps.fit(self.image, (600, 600), method=Image.Resampling.LANCZOS)
@@ -179,13 +184,17 @@ class PuzzleGame:
                          (300 - (self.rows - 1) * 8) // self.rows)
         for tray_index, idx in enumerate(ids):
             row, col = divmod(idx, self.cols)
-            surface = self.make_jigsaw_surface(image, row, col, cell_w, cell_h, tab)
+            surface, seams = self.make_jigsaw_surface(image, row, col, cell_w, cell_h, tab)
             thumb = pygame.transform.smoothscale(surface, (thumb_size, thumb_size))
+            thumb_scale_x = thumb_size / surface.get_width()
+            thumb_scale_y = thumb_size / surface.get_height()
+            thumb_seams = [[(px * thumb_scale_x, py * thumb_scale_y) for px, py in edge] for edge in seams]
             tray_col = tray_index % self.cols
             tray_row = tray_index // self.cols
             pieces.append({
                 "id": idx, "row": row, "col": col, "surface": surface,
                 "thumb": thumb, "thumb_size": thumb_size, "tab": tab,
+                "seams": seams, "thumb_seams": thumb_seams,
                 "tx": 730 + tray_col * (thumb_size + 8),
                 "ty": 265 + tray_row * (thumb_size + 8),
                 "w": surface.get_width(), "h": surface.get_height(),
@@ -280,19 +289,20 @@ class PuzzleGame:
         piece["x"], piece["y"] = piece["tx"], piece["ty"]
 
     def draw_piece(self, piece, pos, thumbnail=False):
-        """绘制海报拼图块：柔和投影、深色细边和醒目的白色拼缝。"""
+        """只绘制拼图内部接缝；整张拼图的最外轮廓保持无描边。"""
         surface = piece["thumb"] if thumbnail else piece["surface"]
-        outline = piece["thumb_outline"] if thumbnail else piece["outline"]
+        seams = piece["thumb_seams"] if thumbnail else piece["seams"]
         x, y = int(pos[0]), int(pos[1])
-        if not outline:
-            self.screen.blit(surface, (x, y))
-            return
-        points = [(x + px, y + py) for px, py in outline]
-        shadow = [(px + 3, py + 4) for px, py in points]
-        pygame.draw.lines(self.screen, (12, 14, 20), True, shadow, 8 if not thumbnail else 5)
         self.screen.blit(surface, (x, y))
-        pygame.draw.lines(self.screen, (255, 255, 255), True, points, 6 if not thumbnail else 3)
-        pygame.draw.lines(self.screen, (214, 222, 235), True, points, 1)
+        seam_width = 3 if thumbnail else 6
+        shadow_width = 4 if thumbnail else 8
+        for edge in seams:
+            points = [(x + px, y + py) for px, py in edge]
+            shadow = [(px + 2, py + 3) for px, py in points]
+            if len(shadow) >= 2:
+                pygame.draw.lines(self.screen, (12, 14, 20), False, shadow, shadow_width)
+                pygame.draw.lines(self.screen, (255, 255, 255), False, points, seam_width)
+                pygame.draw.lines(self.screen, (214, 222, 235), False, points, 1)
 
     def draw(self):
         self.screen.fill(BG)
