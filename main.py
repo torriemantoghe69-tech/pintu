@@ -93,7 +93,7 @@ class PuzzleGame:
         ux, uy = dx / length, dy / length
         nx, ny = normal
         sign = 1 if protrudes else -1
-        depth = tab * 1.12 * sign
+        depth = tab * 0.90 * sign
 
         def point(u, v):
             return (start[0] + ux * length * u + nx * depth * v,
@@ -117,8 +117,8 @@ class PuzzleGame:
         p6 = point(0.70, 0.0)
         points = [start, p0]
         points += cubic(p0, point(0.34, 0.0), point(0.35, 0.78), p2)
-        points += cubic(p2, point(0.40, 1.18), point(0.47, 1.18), p3)
-        points += cubic(p3, point(0.53, 1.18), point(0.60, 1.18), p4)
+        points += cubic(p2, point(0.40, 1.08), point(0.47, 1.08), p3)
+        points += cubic(p3, point(0.53, 1.08), point(0.60, 1.08), p4)
         points += cubic(p4, point(0.65, 0.78), point(0.66, 0.0), p5)
         points += cubic(p5, point(0.65, 0.0), point(0.68, 0.0), p6)
         points.append(end)
