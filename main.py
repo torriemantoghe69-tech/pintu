@@ -50,6 +50,8 @@ class PuzzleGame:
         self.started = None
         self.elapsed = 0
         self.show_preview = False
+        self.mode = "drag"  # drag: 拖放拼图；slide: 格子滑动拼图
+        self.sliding_order = []
         self.message = "先选择一张图片，开始你的拼图挑战！"
         self.buttons = {}
         self.running = True
@@ -75,6 +77,8 @@ class PuzzleGame:
             self.pieces = []
             return
         self.build_pieces()
+        if self.mode == "slide":
+            self.shuffle_sliding()
         self.moves = 0
         self.started = time.time()
         self.elapsed = 0
@@ -103,10 +107,46 @@ class PuzzleGame:
                 "id": idx, "row": row, "col": col, "surface": surface,
                 "thumb": thumb, "thumb_size": thumb_size,
                 "tx": 730 + tray_col * (thumb_size + 8),
-                "ty": 165 + tray_row * (thumb_size + 8),
+                "ty": 275 + tray_row * (thumb_size + 8),
                 "w": w, "h": h, "x": 0, "y": 0, "placed": False
             })
         self.pieces = pieces
+        self.reference_thumb = pygame.transform.smoothscale(self.preview_image, (112, 112))
+
+    def shuffle_sliding(self):
+        """生成可解的滑块排列，0 代表空格。"""
+        count = self.rows * self.cols
+        order = list(range(count))
+        blank = count - 1
+        previous = -1
+        for _ in range(max(120, count * 35)):
+            r, c = divmod(blank, self.cols)
+            choices = []
+            if r > 0: choices.append(blank - self.cols)
+            if r < self.rows - 1: choices.append(blank + self.cols)
+            if c > 0: choices.append(blank - 1)
+            if c < self.cols - 1: choices.append(blank + 1)
+            if previous in choices and len(choices) > 1:
+                choices.remove(previous)
+            nxt = random.choice(choices)
+            order[blank], order[nxt] = order[nxt], order[blank]
+            previous, blank = blank, nxt
+        self.sliding_order = order
+
+    def slide_tile(self, index):
+        if index < 0 or index >= len(self.sliding_order):
+            return
+        blank = self.sliding_order.index(0)
+        r1, c1 = divmod(index, self.cols)
+        r2, c2 = divmod(blank, self.cols)
+        if abs(r1-r2) + abs(c1-c2) != 1:
+            return
+        self.sliding_order[blank], self.sliding_order[index] = self.sliding_order[index], self.sliding_order[blank]
+        self.moves += 1
+        if self.sliding_order == list(range(1, self.rows*self.cols)) + [0]:
+            self.elapsed = int(time.time() - self.started) if self.started else 0
+            self.started = None
+            self.message = "恭喜！滑块拼图完成！"
 
     def board_piece_rect(self, piece):
         cell_w = 600 // self.cols
@@ -134,11 +174,23 @@ class PuzzleGame:
                 for col in range(self.cols):
                     rect = pygame.Rect(board_area.x + col * cell_w, board_area.y + row * cell_h, cell_w, cell_h)
                     pygame.draw.rect(self.screen, (48, 58, 78), rect, 1)
-            if self.show_preview:
+            if self.mode == "slide":
+                for slot, tile_id in enumerate(self.sliding_order):
+                    if tile_id == 0:
+                        continue
+                    rr, cc = divmod(slot, self.cols)
+                    src_r, src_c = divmod(tile_id - 1, self.cols)
+                    x0, y0 = src_c * cell_w, src_r * cell_h
+                    crop = self.preview_image.subsurface(pygame.Rect(x0, y0, cell_w, cell_h))
+                    dest = pygame.Rect(board_area.x + cc * cell_w, board_area.y + rr * cell_h, cell_w, cell_h)
+                    self.screen.blit(crop, dest)
+                    pygame.draw.rect(self.screen, (220, 230, 246), dest, 2)
+            elif self.show_preview:
                 preview = pygame.transform.smoothscale(self.preview_image, (600, 600))
                 preview.set_alpha(75)
                 self.screen.blit(preview, board_area)
-            for piece in self.pieces:
+            if self.mode == "drag":
+              for piece in self.pieces:
                 if piece["placed"]:
                     rect = self.board_piece_rect(piece)
                     self.screen.blit(piece["surface"], rect)
@@ -150,9 +202,13 @@ class PuzzleGame:
             text = self.font.render("请先选择图片", True, MUTED)
             self.screen.blit(text, text.get_rect(center=board_area.center))
 
-        self.screen.blit(self.font.render("拼块区", True, WHITE), (735, 102))
-        self.screen.blit(self.small.render("将拼块拖到左侧正确的位置", True, MUTED), (735, 132))
-        for piece in self.pieces:
+        self.screen.blit(self.font.render("参考图", True, WHITE), (735, 102))
+        if self.image:
+            self.screen.blit(self.reference_thumb, (950, 98))
+            pygame.draw.rect(self.screen, (215, 225, 242), pygame.Rect(950, 98, 112, 112), 1)
+        self.screen.blit(self.font.render("拼块区" if self.mode == "drag" else "滑块模式", True, WHITE), (735, 225))
+        self.screen.blit(self.small.render("拖动拼块到左侧" if self.mode == "drag" else "点击空格旁边的拼块移动", True, MUTED), (735, 255))
+        for piece in self.pieces if self.mode == "drag" else []:
             if piece["placed"] or piece is self.dragging:
                 continue
             self.screen.blit(piece["thumb"], (piece["tx"], piece["ty"]))
@@ -173,7 +229,8 @@ class PuzzleGame:
         self.make_button("medium", pygame.Rect(930, 680, 72, 42), "4×4")
         self.make_button("hard", pygame.Rect(1010, 680, 72, 42), "5×5")
         self.make_button("shuffle", pygame.Rect(735, 630, 104, 38), "重新打乱", bool(self.image))
-        self.make_button("preview", pygame.Rect(850, 630, 104, 38), "参考图", bool(self.image))
+        self.make_button("preview", pygame.Rect(850, 630, 104, 38), "参考图提示", bool(self.image))
+        self.make_button("mode", pygame.Rect(965, 630, 117, 38), "切换：滑块" if self.mode == "drag" else "切换：拖放", bool(self.image))
         pygame.display.flip()
 
     def handle_click(self, pos):
@@ -192,6 +249,9 @@ class PuzzleGame:
                 self.new_game(None)
             elif name == "preview" and self.image:
                 self.show_preview = not self.show_preview
+            elif name == "mode" and self.image:
+                self.mode = "slide" if self.mode == "drag" else "drag"
+                self.new_game(None)
             return True
         return False
 
@@ -203,6 +263,14 @@ class PuzzleGame:
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self.handle_click(event.pos):
                         continue
+                    if self.mode == "slide" and self.image:
+                        board_area = pygame.Rect(BOARD.x + 30, BOARD.y + 30, 600, 600)
+                        if board_area.collidepoint(event.pos):
+                            cell_w, cell_h = 600 // self.cols, 600 // self.rows
+                            cc = min(self.cols - 1, max(0, (event.pos[0] - board_area.x) // cell_w))
+                            rr = min(self.rows - 1, max(0, (event.pos[1] - board_area.y) // cell_h))
+                            self.slide_tile(rr * self.cols + cc)
+                        continue
                     for piece in reversed(self.pieces):
                         if piece["placed"]:
                             continue
@@ -213,10 +281,10 @@ class PuzzleGame:
                             piece["x"] = event.pos[0] - self.drag_offset[0]
                             piece["y"] = event.pos[1] - self.drag_offset[1]
                             break
-                elif event.type == pygame.MOUSEMOTION and self.dragging:
+                elif event.type == pygame.MOUSEMOTION and self.dragging and self.mode == "drag":
                     self.dragging["x"] = event.pos[0] - self.drag_offset[0]
                     self.dragging["y"] = event.pos[1] - self.drag_offset[1]
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.dragging:
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.dragging and self.mode == "drag":
                     piece = self.dragging
                     target = self.board_piece_rect(piece)
                     current = pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"])
