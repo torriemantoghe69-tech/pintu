@@ -408,7 +408,7 @@ class PuzzleGame:
         self.make_button("preview", pygame.Rect(850, 630, 104, 38), "参考图提示", bool(self.image))
         self.make_button("mode", pygame.Rect(965, 630, 117, 38), "切换：滑块" if self.mode == "drag" else "切换：拖放", bool(self.image))
         frame_names = ["木纹", "鎏金", "典藏", "樱花粉", "白框"]
-        self.make_button("frame", pygame.Rect(965, 575, 117, 38), "相框：" + frame_names[self.frame_style], bool(self.image))
+        self.make_button("frame", pygame.Rect(900, 18, 190, 40), "更换相框：" + frame_names[self.frame_style], bool(self.image))
         pygame.display.flip()
 
     def handle_click(self, pos):
