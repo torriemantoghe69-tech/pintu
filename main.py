@@ -85,42 +85,31 @@ class PuzzleGame:
         self.message = "拖动右侧拼块，放到左侧对应位置。"
         
     def _edge_points(self, start, end, normal, protrudes, tab):
-        """生成圆头、窄颈的拼图凸起/凹槽曲线点。"""
+        """生成真正的半圆形凸起/凹槽；相邻拼块使用同一圆弧的互补方向。"""
         if protrudes is None:
             return [start, end]
         dx, dy = end[0] - start[0], end[1] - start[1]
         length = math.hypot(dx, dy)
         ux, uy = dx / length, dy / length
         nx, ny = normal
-        sign = 1 if protrudes else -1
-        depth = tab * 0.90 * sign
 
-        def point(u, v):
-            return (start[0] + ux * length * u + nx * depth * v,
-                    start[1] + uy * length * u + ny * depth * v)
-
-        def cubic(p0, p1, p2, p3, steps=8):
-            out = []
-            for i in range(1, steps + 1):
-                t = i / steps
-                q = 1 - t
-                out.append((q**3*p0[0] + 3*q*q*t*p1[0] + 3*q*t*t*p2[0] + t**3*p3[0],
-                            q**3*p0[1] + 3*q*q*t*p1[1] + 3*q*t*t*p2[1] + t**3*p3[1]))
-            return out
-
-        p0 = point(0.30, 0.0)
-        p1 = point(0.37, 0.0)
-        p2 = point(0.37, 0.78)
-        p3 = point(0.50, 0.78)
-        p4 = point(0.63, 0.78)
-        p5 = point(0.63, 0.0)
-        p6 = point(0.70, 0.0)
-        points = [start, p0]
-        points += cubic(p0, point(0.34, 0.0), point(0.35, 0.78), p2)
-        points += cubic(p2, point(0.40, 1.08), point(0.47, 1.08), p3)
-        points += cubic(p3, point(0.53, 1.08), point(0.60, 1.08), p4)
-        points += cubic(p4, point(0.65, 0.78), point(0.66, 0.0), p5)
-        points += cubic(p5, point(0.65, 0.0), point(0.68, 0.0), p6)
+        # 半圆直径沿边缘方向，半径不超过预留边距，避免圆弧被裁切。
+        radius = min(tab * 0.88, length * 0.18)
+        center = length * 0.5
+        sign = 1.0 if protrudes else -1.0
+        points = [start]
+        # 从左侧基线点沿半圆弧走到右侧基线点。
+        points.append((start[0] + ux * (center - radius),
+                       start[1] + uy * (center - radius)))
+        steps = 32
+        for i in range(1, steps + 1):
+            theta = math.pi - math.pi * i / steps
+            along = center + radius * math.cos(theta)
+            outward = sign * radius * math.sin(theta)
+            points.append((start[0] + ux * along + nx * outward,
+                           start[1] + uy * along + ny * outward))
+        points.append((start[0] + ux * (center + radius),
+                       start[1] + uy * (center + radius)))
         points.append(end)
         return points
 
