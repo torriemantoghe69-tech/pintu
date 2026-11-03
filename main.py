@@ -85,24 +85,47 @@ class PuzzleGame:
         self.message = "拖动右侧拼块，放到左侧对应位置。"
         
     def _edge_points(self, start, end, normal, protrudes, tab):
-        """返回一条带圆弧凸起/凹槽的边界点。"""
-        points = [start]
+        """生成圆头、窄颈的拼图凸起/凹槽曲线点。"""
         if protrudes is None:
-            points.append(end)
-            return points
+            return [start, end]
         dx, dy = end[0] - start[0], end[1] - start[1]
-        direction = 1 if protrudes else -1
-        depth = tab * 0.92 * direction
-        for i in range(17):
-            u = 0.34 + i * (0.32 / 16)
-            bulge = math.sin(math.pi * (i / 16)) ** 0.72
-            points.append((start[0] + dx * u + normal[0] * depth * bulge,
-                           start[1] + dy * u + normal[1] * depth * bulge))
+        length = math.hypot(dx, dy)
+        ux, uy = dx / length, dy / length
+        nx, ny = normal
+        sign = 1 if protrudes else -1
+        depth = tab * 1.12 * sign
+
+        def point(u, v):
+            return (start[0] + ux * length * u + nx * depth * v,
+                    start[1] + uy * length * u + ny * depth * v)
+
+        def cubic(p0, p1, p2, p3, steps=8):
+            out = []
+            for i in range(1, steps + 1):
+                t = i / steps
+                q = 1 - t
+                out.append((q**3*p0[0] + 3*q*q*t*p1[0] + 3*q*t*t*p2[0] + t**3*p3[0],
+                            q**3*p0[1] + 3*q*q*t*p1[1] + 3*q*t*t*p2[1] + t**3*p3[1]))
+            return out
+
+        p0 = point(0.30, 0.0)
+        p1 = point(0.37, 0.0)
+        p2 = point(0.37, 0.78)
+        p3 = point(0.50, 0.78)
+        p4 = point(0.63, 0.78)
+        p5 = point(0.63, 0.0)
+        p6 = point(0.70, 0.0)
+        points = [start, p0]
+        points += cubic(p0, point(0.34, 0.0), point(0.35, 0.78), p2)
+        points += cubic(p2, point(0.40, 1.18), point(0.47, 1.18), p3)
+        points += cubic(p3, point(0.53, 1.18), point(0.60, 1.18), p4)
+        points += cubic(p4, point(0.65, 0.78), point(0.66, 0.0), p5)
+        points += cubic(p5, point(0.65, 0.0), point(0.68, 0.0), p6)
         points.append(end)
         return points
 
     def make_jigsaw_surface(self, image, row, col, cell_w, cell_h, tab):
-        """裁出带透明凸起/凹槽轮廓的拼图块；相邻边使用互补形状。"""
+        """生成独立透明异形拼图块；相邻边使用严格互补的凸起和凹槽。"""
         from PIL import ImageDraw
 
         x0, y0 = col * cell_w, row * cell_h
@@ -125,16 +148,20 @@ class PuzzleGame:
         mask = Image.new("L", (canvas_w * scale, canvas_h * scale), 0)
         draw = ImageDraw.Draw(mask)
         t, cw, ch = tab * scale, cell_w * scale, cell_h * scale
-        points = [(t, t)]
         edges = [
             ((t, t), (t + cw, t), (0, -1), top),
             ((t + cw, t), (t + cw, t + ch), (1, 0), right),
             ((t + cw, t + ch), (t, t + ch), (0, 1), bottom),
             ((t, t + ch), (t, t), (-1, 0), left),
         ]
-        for a, b, normal, protrudes in edges:
-            points.extend(self._edge_points(a, b, normal, protrudes, t)[1:])
-        draw.polygon(points, fill=255)
+        outline = []
+        for edge_index, (p_start, p_end, normal, protrudes) in enumerate(edges):
+            pts = self._edge_points(p_start, p_end, normal, protrudes, t)
+            if edge_index == 0:
+                outline.extend(pts)
+            else:
+                outline.extend(pts[1:])
+        draw.polygon(outline, fill=255)
         mask = mask.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
         crop.putalpha(mask)
         return pygame.image.fromstring(crop.tobytes(), crop.size, "RGBA").convert_alpha()
@@ -144,11 +171,12 @@ class PuzzleGame:
         self.preview_image = pygame.image.fromstring(image.tobytes(), image.size, "RGB")
         cell_w = 600 // self.cols
         cell_h = 600 // self.rows
-        tab = max(12, int(min(cell_w, cell_h) * 0.17))
+        tab = max(16, int(min(cell_w, cell_h) * 0.22))
         pieces = []
         ids = list(range(self.rows * self.cols))
         random.shuffle(ids)
-        thumb_size = min(90, (340 - (self.cols - 1) * 8) // self.cols, (300 - (self.rows - 1) * 8) // self.rows)
+        thumb_size = min(90, (340 - (self.cols - 1) * 8) // self.cols,
+                         (300 - (self.rows - 1) * 8) // self.rows)
         for tray_index, idx in enumerate(ids):
             row, col = divmod(idx, self.cols)
             surface = self.make_jigsaw_surface(image, row, col, cell_w, cell_h, tab)
@@ -161,7 +189,7 @@ class PuzzleGame:
                 "tx": 730 + tray_col * (thumb_size + 8),
                 "ty": 265 + tray_row * (thumb_size + 8),
                 "w": surface.get_width(), "h": surface.get_height(),
-                "x": 0, "y": 0, "placed": False
+                "x": 0, "y": 0, "placed": False, "placed_slot": None
             })
         self.pieces = pieces
         self.reference_thumb = pygame.transform.smoothscale(self.preview_image, (112, 112))
@@ -201,13 +229,53 @@ class PuzzleGame:
             self.started = None
             self.message = "恭喜！滑块拼图完成！"
 
-    def board_piece_rect(self, piece):
+    def board_piece_rect(self, piece, slot=None):
         cell_w = 600 // self.cols
         cell_h = 600 // self.rows
+        if slot is None:
+            slot = piece.get("placed_slot")
+        if slot is None:
+            slot = piece["id"]
+        row, col = divmod(slot, self.cols)
         tab = piece["tab"]
-        return pygame.Rect(BOARD.x + 30 + piece["col"] * cell_w - tab,
-                           BOARD.y + 30 + piece["row"] * cell_h - tab,
+        return pygame.Rect(BOARD.x + 30 + col * cell_w - tab,
+                           BOARD.y + 30 + row * cell_h - tab,
                            piece["w"], piece["h"])
+
+    def board_slot_at(self, point):
+        board_area = pygame.Rect(BOARD.x + 30, BOARD.y + 30, 600, 600)
+        if not board_area.collidepoint(point):
+            return None
+        cell_w, cell_h = 600 // self.cols, 600 // self.rows
+        col = min(self.cols - 1, max(0, (point[0] - board_area.x) // cell_w))
+        row = min(self.rows - 1, max(0, (point[1] - board_area.y) // cell_h))
+        return int(row * self.cols + col)
+
+    def finish_drag_piece(self, piece):
+        board_area = pygame.Rect(BOARD.x + 30, BOARD.y + 30, 600, 600)
+        center = (piece["x"] + piece["w"] // 2, piece["y"] + piece["h"] // 2)
+        slot = self.board_slot_at(center)
+        if slot is not None:
+            occupied = {p.get("placed_slot") for p in self.pieces
+                        if p is not piece and p["placed"] and p.get("placed_slot") is not None}
+            if slot not in occupied:
+                piece["placed"] = True
+                piece["placed_slot"] = slot
+                target = self.board_piece_rect(piece, slot)
+                piece["x"], piece["y"] = target.topleft
+                self.moves += 1
+                if all(p["placed"] and p.get("placed_slot") == p["id"] for p in self.pieces):
+                    self.elapsed = int(time.time() - self.started) if self.started else 0
+                    self.started = None
+                    self.message = "恭喜！异形拼图完成！"
+                else:
+                    wrong = sum(1 for p in self.pieces
+                                if p["placed"] and p.get("placed_slot") != p["id"])
+                    self.message = f"已放入棋盘：{sum(1 for p in self.pieces if p['placed'])}/{len(self.pieces)}，错位 {wrong} 块，可继续调整。"
+                return
+        piece["placed"] = False
+        piece["placed_slot"] = None
+        piece["x"], piece["y"] = piece["tx"], piece["ty"]
 
     def draw(self):
         self.screen.fill(BG)
@@ -244,11 +312,15 @@ class PuzzleGame:
                 preview.set_alpha(75)
                 self.screen.blit(preview, board_area)
             if self.mode == "drag":
-              for piece in self.pieces:
-                if piece["placed"]:
-                    rect = self.board_piece_rect(piece)
-                    self.screen.blit(piece["surface"], rect)
-                    pygame.draw.rect(self.screen, (220, 230, 246), rect, 1)
+                for piece in self.pieces:
+                    if piece["placed"] and piece is not self.dragging:
+                        rect = self.board_piece_rect(piece)
+                        self.screen.blit(piece["surface"], rect)
+                        edge_mask = pygame.mask.from_surface(piece["surface"])
+                        outline = edge_mask.outline()
+                        if outline:
+                            pygame.draw.lines(self.screen, (222, 232, 248), True,
+                                              [(rect.x + x, rect.y + y) for x, y in outline], 1)
             if self.dragging:
                 p = self.dragging
                 self.screen.blit(p["surface"], (p["x"], p["y"]))
@@ -269,8 +341,11 @@ class PuzzleGame:
         if self.dragging:
             piece = self.dragging
             self.screen.blit(piece["surface"], (piece["x"], piece["y"]))
-            pygame.draw.rect(self.screen, (255, 255, 255),
-                             pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"]), 2)
+            drag_mask = pygame.mask.from_surface(piece["surface"])
+            drag_outline = drag_mask.outline()
+            if drag_outline:
+                pygame.draw.lines(self.screen, (255, 255, 255), True,
+                                  [(piece["x"] + x, piece["y"] + y) for x, y in drag_outline], 2)
 
         elapsed = int(time.time() - self.started) if self.started else self.elapsed
         stats = f"难度：{self.rows} × {self.cols}     步数：{self.moves}     用时：{elapsed // 60:02d}:{elapsed % 60:02d}"
@@ -323,32 +398,38 @@ class PuzzleGame:
                             rr = min(self.rows - 1, max(0, (event.pos[1] - board_area.y) // cell_h))
                             self.slide_tile(rr * self.cols + cc)
                         continue
+                    # 已放上棋盘的拼块也能重新拿起调整
+                    picked = False
                     for piece in reversed(self.pieces):
-                        if piece["placed"]:
+                        if not piece["placed"]:
                             continue
-                        rect = pygame.Rect(piece["tx"], piece["ty"], piece["thumb_size"], piece["thumb_size"])
+                        rect = self.board_piece_rect(piece)
                         if rect.collidepoint(event.pos):
+                            piece["placed"] = False
+                            piece["placed_slot"] = None
                             self.dragging = piece
                             self.drag_offset = (piece["w"] // 2, piece["h"] // 2)
                             piece["x"] = event.pos[0] - self.drag_offset[0]
                             piece["y"] = event.pos[1] - self.drag_offset[1]
+                            picked = True
                             break
+                    if not picked:
+                        for piece in reversed(self.pieces):
+                            if piece["placed"]:
+                                continue
+                            rect = pygame.Rect(piece["tx"], piece["ty"], piece["thumb_size"], piece["thumb_size"])
+                            if rect.collidepoint(event.pos):
+                                self.dragging = piece
+                                self.drag_offset = (piece["w"] // 2, piece["h"] // 2)
+                                piece["x"] = event.pos[0] - self.drag_offset[0]
+                                piece["y"] = event.pos[1] - self.drag_offset[1]
+                                break
                 elif event.type == pygame.MOUSEMOTION and self.dragging and self.mode == "drag":
                     self.dragging["x"] = event.pos[0] - self.drag_offset[0]
                     self.dragging["y"] = event.pos[1] - self.drag_offset[1]
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.dragging and self.mode == "drag":
                     piece = self.dragging
-                    target = self.board_piece_rect(piece)
-                    current = pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"])
-                    snap_distance = max(42, min(piece["w"], piece["h"]) * 0.32)
-                    if target.colliderect(BOARD) and math.dist(current.center, target.center) < snap_distance:
-                        piece["x"], piece["y"] = target.topleft
-                        piece["placed"] = True
-                        self.moves += 1
-                        if all(p["placed"] for p in self.pieces):
-                            self.elapsed = int(time.time() - self.started) if self.started else 0
-                            self.started = None
-                            self.message = "恭喜！拼图完成！你真棒！"
+                    self.finish_drag_piece(piece)
                     self.dragging = None
             self.draw()
             self.clock.tick(60)
