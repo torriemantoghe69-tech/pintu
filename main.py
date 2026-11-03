@@ -395,6 +395,8 @@ class PuzzleGame:
         if self.image:
             self.screen.blit(self.reference_thumb, (950, 98))
             pygame.draw.rect(self.screen, (215, 225, 242), pygame.Rect(950, 98, 112, 112), 1)
+            # 相框切换后立即显示在参考图周围，不必等拼图完成。
+            self.draw_decorative_frame(pygame.Rect(950, 98, 112, 112))
         self.screen.blit(self.font.render("拼块区" if self.mode == "drag" else "滑块模式", True, WHITE), (735, 225))
         self.screen.blit(self.small.render("拖动拼块到左侧" if self.mode == "drag" else "点击空格旁边的拼块移动", True, MUTED), (735, 255))
         for piece in self.pieces if self.mode == "drag" else []:
