@@ -84,31 +84,84 @@ class PuzzleGame:
         self.elapsed = 0
         self.message = "拖动右侧拼块，放到左侧对应位置。"
         
+    def _edge_points(self, start, end, normal, protrudes, tab):
+        """返回一条带圆弧凸起/凹槽的边界点。"""
+        points = [start]
+        if protrudes is None:
+            points.append(end)
+            return points
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        direction = 1 if protrudes else -1
+        depth = tab * 0.92 * direction
+        for i in range(17):
+            u = 0.34 + i * (0.32 / 16)
+            bulge = math.sin(math.pi * (i / 16)) ** 0.72
+            points.append((start[0] + dx * u + normal[0] * depth * bulge,
+                           start[1] + dy * u + normal[1] * depth * bulge))
+        points.append(end)
+        return points
+
+    def make_jigsaw_surface(self, image, row, col, cell_w, cell_h, tab):
+        """裁出带透明凸起/凹槽轮廓的拼图块；相邻边使用互补形状。"""
+        from PIL import ImageDraw
+
+        x0, y0 = col * cell_w, row * cell_h
+        x1, y1 = x0 + cell_w, y0 + cell_h
+        canvas_w, canvas_h = cell_w + 2 * tab, cell_h + 2 * tab
+        crop = image.crop((x0 - tab, y0 - tab, x1 + tab, y1 + tab)).convert("RGBA")
+
+        def horizontal_edge(r, boundary):
+            return ((r * 37 + boundary * 19 + 11) % 2) == 0
+
+        def vertical_edge(boundary, c):
+            return ((boundary * 29 + c * 43 + 7) % 2) == 0
+
+        top = None if row == 0 else not vertical_edge(row, col)
+        right = None if col == self.cols - 1 else horizontal_edge(row, col)
+        bottom = None if row == self.rows - 1 else vertical_edge(row + 1, col)
+        left = None if col == 0 else not horizontal_edge(row, col - 1)
+
+        scale = 4
+        mask = Image.new("L", (canvas_w * scale, canvas_h * scale), 0)
+        draw = ImageDraw.Draw(mask)
+        t, cw, ch = tab * scale, cell_w * scale, cell_h * scale
+        points = [(t, t)]
+        edges = [
+            ((t, t), (t + cw, t), (0, -1), top),
+            ((t + cw, t), (t + cw, t + ch), (1, 0), right),
+            ((t + cw, t + ch), (t, t + ch), (0, 1), bottom),
+            ((t, t + ch), (t, t), (-1, 0), left),
+        ]
+        for a, b, normal, protrudes in edges:
+            points.extend(self._edge_points(a, b, normal, protrudes, t)[1:])
+        draw.polygon(points, fill=255)
+        mask = mask.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
+        crop.putalpha(mask)
+        return pygame.image.fromstring(crop.tobytes(), crop.size, "RGBA").convert_alpha()
+
     def build_pieces(self):
         image = ImageOps.fit(self.image, (600, 600), method=Image.Resampling.LANCZOS)
         self.preview_image = pygame.image.fromstring(image.tobytes(), image.size, "RGB")
         cell_w = 600 // self.cols
         cell_h = 600 // self.rows
+        tab = max(12, int(min(cell_w, cell_h) * 0.17))
         pieces = []
         ids = list(range(self.rows * self.cols))
         random.shuffle(ids)
         thumb_size = min(90, (340 - (self.cols - 1) * 8) // self.cols, (300 - (self.rows - 1) * 8) // self.rows)
         for tray_index, idx in enumerate(ids):
             row, col = divmod(idx, self.cols)
-            x0, y0 = col * cell_w, row * cell_h
-            w = 600 - x0 if col == self.cols - 1 else cell_w
-            h = 600 - y0 if row == self.rows - 1 else cell_h
-            crop = image.crop((x0, y0, x0 + w, y0 + h))
-            surface = pygame.image.fromstring(crop.tobytes(), crop.size, "RGB").convert()
+            surface = self.make_jigsaw_surface(image, row, col, cell_w, cell_h, tab)
             thumb = pygame.transform.smoothscale(surface, (thumb_size, thumb_size))
             tray_col = tray_index % self.cols
             tray_row = tray_index // self.cols
             pieces.append({
                 "id": idx, "row": row, "col": col, "surface": surface,
-                "thumb": thumb, "thumb_size": thumb_size,
+                "thumb": thumb, "thumb_size": thumb_size, "tab": tab,
                 "tx": 730 + tray_col * (thumb_size + 8),
                 "ty": 265 + tray_row * (thumb_size + 8),
-                "w": w, "h": h, "x": 0, "y": 0, "placed": False
+                "w": surface.get_width(), "h": surface.get_height(),
+                "x": 0, "y": 0, "placed": False
             })
         self.pieces = pieces
         self.reference_thumb = pygame.transform.smoothscale(self.preview_image, (112, 112))
@@ -151,8 +204,9 @@ class PuzzleGame:
     def board_piece_rect(self, piece):
         cell_w = 600 // self.cols
         cell_h = 600 // self.rows
-        return pygame.Rect(BOARD.x + 30 + piece["col"] * cell_w,
-                           BOARD.y + 30 + piece["row"] * cell_h,
+        tab = piece["tab"]
+        return pygame.Rect(BOARD.x + 30 + piece["col"] * cell_w - tab,
+                           BOARD.y + 30 + piece["row"] * cell_h - tab,
                            piece["w"], piece["h"])
 
     def draw(self):
@@ -212,8 +266,6 @@ class PuzzleGame:
             if piece["placed"] or piece is self.dragging:
                 continue
             self.screen.blit(piece["thumb"], (piece["tx"], piece["ty"]))
-            pygame.draw.rect(self.screen, (215, 225, 242),
-                             pygame.Rect(piece["tx"], piece["ty"], piece["thumb_size"], piece["thumb_size"]), 1)
         if self.dragging:
             piece = self.dragging
             self.screen.blit(piece["surface"], (piece["x"], piece["y"]))
