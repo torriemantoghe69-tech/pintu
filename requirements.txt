@@ -1,0 +1,1 @@
+pygame==2.6.1\nPillow==11.1.0\npyinstaller==6.11.1\n
