@@ -88,24 +88,24 @@ class PuzzleGame:
         pieces = []
         ids = list(range(self.rows * self.cols))
         random.shuffle(ids)
-        for idx in ids:
+        thumb_size = min(90, (340 - (self.cols - 1) * 8) // self.cols)
+        for tray_index, idx in enumerate(ids):
             row, col = divmod(idx, self.cols)
             x0, y0 = col * cell_w, row * cell_h
             w = 600 - x0 if col == self.cols - 1 else cell_w
             h = 600 - y0 if row == self.rows - 1 else cell_h
             crop = image.crop((x0, y0, x0 + w, y0 + h))
-            surface = pygame.image.fromstring(crop.tobytes(), crop.size, "RGB")
-            # A thin border makes every tile easy to distinguish while keeping the source image crisp.
-            surface = surface.convert()
+            surface = pygame.image.fromstring(crop.tobytes(), crop.size, "RGB").convert()
+            thumb = pygame.transform.smoothscale(surface, (thumb_size, thumb_size))
+            tray_col = tray_index % self.cols
+            tray_row = tray_index // self.cols
             pieces.append({
                 "id": idx, "row": row, "col": col, "surface": surface,
-                "w": w, "h": h, "x": 730 + (len(pieces) % 3) * 118,
-                "y": 145 + (len(pieces) // 3) * 112, "placed": False
+                "thumb": thumb, "thumb_size": thumb_size,
+                "tx": 730 + tray_col * (thumb_size + 8),
+                "ty": 165 + tray_row * (thumb_size + 8),
+                "w": w, "h": h, "x": 0, "y": 0, "placed": False
             })
-        random.shuffle(pieces)
-        for i, piece in enumerate(pieces):
-            piece["x"] = 730 + (i % 3) * 118
-            piece["y"] = 145 + (i // 3) * 112
         self.pieces = pieces
 
     def board_piece_rect(self, piece):
@@ -155,8 +155,14 @@ class PuzzleGame:
         for piece in self.pieces:
             if piece["placed"] or piece is self.dragging:
                 continue
+            self.screen.blit(piece["thumb"], (piece["tx"], piece["ty"]))
+            pygame.draw.rect(self.screen, (215, 225, 242),
+                             pygame.Rect(piece["tx"], piece["ty"], piece["thumb_size"], piece["thumb_size"]), 1)
+        if self.dragging:
+            piece = self.dragging
             self.screen.blit(piece["surface"], (piece["x"], piece["y"]))
-            pygame.draw.rect(self.screen, (215, 225, 242), pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"]), 1)
+            pygame.draw.rect(self.screen, (255, 255, 255),
+                             pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"]), 2)
 
         elapsed = int(time.time() - self.started) if self.started else self.elapsed
         stats = f"难度：{self.rows} × {self.cols}     步数：{self.moves}     用时：{elapsed // 60:02d}:{elapsed % 60:02d}"
@@ -200,10 +206,12 @@ class PuzzleGame:
                     for piece in reversed(self.pieces):
                         if piece["placed"]:
                             continue
-                        rect = pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"])
+                        rect = pygame.Rect(piece["tx"], piece["ty"], piece["thumb_size"], piece["thumb_size"])
                         if rect.collidepoint(event.pos):
                             self.dragging = piece
-                            self.drag_offset = (event.pos[0] - piece["x"], event.pos[1] - piece["y"])
+                            self.drag_offset = (piece["w"] // 2, piece["h"] // 2)
+                            piece["x"] = event.pos[0] - self.drag_offset[0]
+                            piece["y"] = event.pos[1] - self.drag_offset[1]
                             break
                 elif event.type == pygame.MOUSEMOTION and self.dragging:
                     self.dragging["x"] = event.pos[0] - self.drag_offset[0]
@@ -212,7 +220,8 @@ class PuzzleGame:
                     piece = self.dragging
                     target = self.board_piece_rect(piece)
                     current = pygame.Rect(piece["x"], piece["y"], piece["w"], piece["h"])
-                    if target.colliderect(BOARD) and math.dist(current.center, target.center) < 62:
+                    snap_distance = max(42, min(piece["w"], piece["h"]) * 0.32)
+                    if target.colliderect(BOARD) and math.dist(current.center, target.center) < snap_distance:
                         piece["x"], piece["y"] = target.topleft
                         piece["placed"] = True
                         self.moves += 1
