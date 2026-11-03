@@ -310,19 +310,20 @@ class PuzzleGame:
                     pygame.draw.circle(self.screen, light, (x, y), 4)
                     pygame.draw.circle(self.screen, dark, (x, y), 1)
         elif self.frame_index == 2:  # 星空：星点与闪光
-            random.seed(19)
-            for _ in range(34):
-                x = random.choice((random.randint(outer.left + 5, inner.left - 5),
-                                   random.randint(inner.right + 5, outer.right - 5)))
-                y = random.randint(outer.top + 5, outer.bottom - 5)
-                pygame.draw.circle(self.screen, light, (x, y), random.choice((1, 1, 2)))
+            for i in range(12):
+                x = outer.left + 18 + i * (outer.width - 36) // 11
+                pygame.draw.circle(self.screen, light, (x, outer.top + 8), 1 + (i % 3 == 0))
+                pygame.draw.circle(self.screen, light, (x, outer.bottom - 8), 1)
+            for i in range(10):
+                y = outer.top + 18 + i * (outer.height - 36) // 9
+                pygame.draw.circle(self.screen, light, (outer.left + 8, y), 1 + (i % 4 == 0))
+                pygame.draw.circle(self.screen, light, (outer.right - 8, y), 1)
             for x, y in ((outer.left + 10, outer.top + 10),
                          (outer.right - 10, outer.top + 10),
                          (outer.left + 10, outer.bottom - 10),
                          (outer.right - 10, outer.bottom - 10)):
                 pygame.draw.line(self.screen, light, (x - 4, y), (x + 4, y), 1)
                 pygame.draw.line(self.screen, light, (x, y - 4), (x, y + 4), 1)
-            random.seed()
         elif self.frame_index == 3:  # 花园：藤蔓与叶片
             for side in ("top", "bottom", "left", "right"):
                 for i in range(5):
