@@ -54,6 +54,7 @@ class PuzzleGame:
         self.sliding_order = []
         self.message = "先选择一张图片，开始你的拼图挑战！"
         self.buttons = {}
+        self.frame_index = 0
         self.running = True
         self.new_game(None)
 
@@ -277,6 +278,72 @@ class PuzzleGame:
         piece["placed_slot"] = None
         piece["x"], piece["y"] = piece["tx"], piece["ty"]
 
+    def draw_frame(self, board_area):
+        """绘制可替换的装饰边框；边框只占棋盘外围留白，不覆盖拼图区域。"""
+        styles = [
+            ("典雅木框", (74, 43, 28), (164, 111, 65), (224, 177, 112)),
+            ("金色典藏", (48, 35, 20), (181, 132, 48), (255, 221, 139)),
+            ("梦幻星空", (19, 27, 58), (73, 99, 170), (160, 194, 255)),
+            ("清新花园", (31, 66, 48), (91, 143, 91), (194, 226, 151)),
+            ("复古相框", (100, 79, 57), (207, 181, 139), (246, 226, 184)),
+            ("极简银灰", (39, 45, 56), (125, 139, 158), (224, 232, 242)),
+        ]
+        name, dark, mid, light = styles[self.frame_index % len(styles)]
+        outer = board_area.inflate(36, 36)
+        inner = board_area.inflate(4, 4)
+        pygame.draw.rect(self.screen, dark, outer, border_radius=18)
+        pygame.draw.rect(self.screen, mid, outer, 3, border_radius=18)
+        pygame.draw.rect(self.screen, light, outer.inflate(-8, -8), 2, border_radius=14)
+        pygame.draw.rect(self.screen, dark, inner, 2, border_radius=5)
+
+        if self.frame_index == 0:  # 木纹：层叠木色与短纹理
+            for inset in (6, 11, 15):
+                r = outer.inflate(-inset * 2, -inset * 2)
+                pygame.draw.rect(self.screen, mid if inset == 6 else light, r, 1, border_radius=15)
+            for y in (outer.top + 7, outer.bottom - 8):
+                for x in range(outer.left + 30, outer.right - 24, 54):
+                    pygame.draw.line(self.screen, mid, (x, y), (x + 22, y), 1)
+        elif self.frame_index == 1:  # 金色：双层金边与四角铆钉
+            pygame.draw.rect(self.screen, light, outer.inflate(-6, -6), 2, border_radius=14)
+            for x in (outer.left + 12, outer.right - 12):
+                for y in (outer.top + 12, outer.bottom - 12):
+                    pygame.draw.circle(self.screen, light, (x, y), 4)
+                    pygame.draw.circle(self.screen, dark, (x, y), 1)
+        elif self.frame_index == 2:  # 星空：星点与闪光
+            random.seed(19)
+            for _ in range(34):
+                x = random.choice((random.randint(outer.left + 5, inner.left - 5),
+                                   random.randint(inner.right + 5, outer.right - 5)))
+                y = random.randint(outer.top + 5, outer.bottom - 5)
+                pygame.draw.circle(self.screen, light, (x, y), random.choice((1, 1, 2)))
+            for x, y in ((outer.left + 10, outer.top + 10),
+                         (outer.right - 10, outer.top + 10),
+                         (outer.left + 10, outer.bottom - 10),
+                         (outer.right - 10, outer.bottom - 10)):
+                pygame.draw.line(self.screen, light, (x - 4, y), (x + 4, y), 1)
+                pygame.draw.line(self.screen, light, (x, y - 4), (x, y + 4), 1)
+            random.seed()
+        elif self.frame_index == 3:  # 花园：藤蔓与叶片
+            for side in ("top", "bottom", "left", "right"):
+                for i in range(5):
+                    if side in ("top", "bottom"):
+                        x = outer.left + 28 + i * ((outer.width - 56) // 4)
+                        y = outer.top + 8 if side == "top" else outer.bottom - 8
+                    else:
+                        x = outer.left + 8 if side == "left" else outer.right - 8
+                        y = outer.top + 28 + i * ((outer.height - 56) // 4)
+                    pygame.draw.ellipse(self.screen, light, pygame.Rect(x - 5, y - 3, 10, 6))
+                    pygame.draw.line(self.screen, mid, (x - 7, y + 4), (x + 7, y - 4), 1)
+        elif self.frame_index == 4:  # 复古：雕花式角饰
+            for x in (outer.left + 12, outer.right - 12):
+                for y in (outer.top + 12, outer.bottom - 12):
+                    pygame.draw.circle(self.screen, light, (x, y), 6, 2)
+                    pygame.draw.circle(self.screen, mid, (x, y), 2)
+                    pygame.draw.line(self.screen, light, (x - 8, y), (x + 8, y), 1)
+                    pygame.draw.line(self.screen, light, (x, y - 8), (x, y + 8), 1)
+        else:  # 极简：克制的银色双线
+            pygame.draw.rect(self.screen, light, outer.inflate(-10, -10), 1, border_radius=12)
+
     def draw(self):
         self.screen.fill(BG)
         title = self.big.render("拼图工坊", True, WHITE)
@@ -289,6 +356,7 @@ class PuzzleGame:
         pygame.draw.rect(self.screen, (65, 78, 103), PANEL, 1, border_radius=16)
 
         board_area = pygame.Rect(BOARD.x + 30, BOARD.y + 30, 600, 600)
+        self.draw_frame(board_area)
         if self.image:
             pygame.draw.rect(self.screen, (12, 16, 25), board_area)
             cell_w, cell_h = 600 // self.cols, 600 // self.rows
@@ -347,6 +415,12 @@ class PuzzleGame:
                 pygame.draw.lines(self.screen, (255, 255, 255), True,
                                   [(piece["x"] + x, piece["y"] + y) for x, y in drag_outline], 2)
 
+        self.screen.blit(self.small.render("边框主题", True, MUTED), (735, 541))
+        self.make_button("frame_prev", pygame.Rect(825, 535, 38, 30), "‹")
+        frame_names = ["典雅木框", "金色典藏", "梦幻星空", "清新花园", "复古相框", "极简银灰"]
+        frame_label = self.font.render(frame_names[self.frame_index], True, WHITE)
+        self.screen.blit(frame_label, frame_label.get_rect(center=(944, 550)))
+        self.make_button("frame_next", pygame.Rect(1025, 535, 38, 30), "›")
         elapsed = int(time.time() - self.started) if self.started else self.elapsed
         stats = f"难度：{self.rows} × {self.cols}     步数：{self.moves}     用时：{elapsed // 60:02d}:{elapsed % 60:02d}"
         self.screen.blit(self.small.render(stats, True, WHITE), (735, 575))
@@ -364,7 +438,11 @@ class PuzzleGame:
         for name, rect in self.buttons.items():
             if not rect.collidepoint(pos):
                 continue
-            if name == "image":
+            if name == "frame_prev":
+                self.frame_index = (self.frame_index - 1) % 6
+            elif name == "frame_next":
+                self.frame_index = (self.frame_index + 1) % 6
+            elif name == "image":
                 path = choose_image()
                 if path:
                     self.new_game(path)
