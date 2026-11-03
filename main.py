@@ -289,10 +289,10 @@ class PuzzleGame:
             return
         points = [(x + px, y + py) for px, py in outline]
         shadow = [(px + 3, py + 4) for px, py in points]
-        pygame.draw.lines(self.screen, (12, 14, 20), True, shadow, 7 if not thumbnail else 4)
+        pygame.draw.lines(self.screen, (12, 14, 20), True, shadow, 8 if not thumbnail else 5)
+        self.screen.blit(surface, (x, y))
         pygame.draw.lines(self.screen, (255, 255, 255), True, points, 6 if not thumbnail else 3)
         pygame.draw.lines(self.screen, (214, 222, 235), True, points, 1)
-        self.screen.blit(surface, (x, y))
 
     def draw(self):
         self.screen.fill(BG)
