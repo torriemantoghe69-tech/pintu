@@ -169,8 +169,20 @@ class PuzzleGame:
         draw.polygon(outline, fill=255)
         mask = mask.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
         crop.putalpha(mask)
+        # 沿接缝逐段读取原图颜色，接缝不再使用白线或统一灰线。
+        seam_colors = []
+        rgb_crop = crop.convert("RGB")
+        for edge in seams:
+            colors = []
+            for i in range(len(edge) - 1):
+                mx = int((edge[i][0] + edge[i + 1][0]) / 2)
+                my = int((edge[i][1] + edge[i + 1][1]) / 2)
+                mx = max(0, min(rgb_crop.width - 1, mx))
+                my = max(0, min(rgb_crop.height - 1, my))
+                colors.append(rgb_crop.getpixel((mx, my)))
+            seam_colors.append(colors)
         surface = pygame.image.fromstring(crop.tobytes(), crop.size, "RGBA").convert_alpha()
-        return surface, seams
+        return surface, seams, seam_colors
 
     def build_pieces(self):
         image = ImageOps.fit(self.image, (600, 600), method=Image.Resampling.LANCZOS)
@@ -185,7 +197,7 @@ class PuzzleGame:
                          (300 - (self.rows - 1) * 8) // self.rows)
         for tray_index, idx in enumerate(ids):
             row, col = divmod(idx, self.cols)
-            surface, seams = self.make_jigsaw_surface(image, row, col, cell_w, cell_h, tab)
+            surface, seams, seam_colors = self.make_jigsaw_surface(image, row, col, cell_w, cell_h, tab)
             thumb = pygame.transform.smoothscale(surface, (thumb_size, thumb_size))
             thumb_scale_x = thumb_size / surface.get_width()
             thumb_scale_y = thumb_size / surface.get_height()
@@ -196,6 +208,7 @@ class PuzzleGame:
                 "id": idx, "row": row, "col": col, "surface": surface,
                 "thumb": thumb, "thumb_size": thumb_size, "tab": tab,
                 "seams": seams, "thumb_seams": thumb_seams,
+                "seam_colors": seam_colors,
                 "tx": 730 + tray_col * (thumb_size + 8),
                 "ty": 265 + tray_row * (thumb_size + 8),
                 "w": surface.get_width(), "h": surface.get_height(),
@@ -295,15 +308,14 @@ class PuzzleGame:
         seams = piece["thumb_seams"] if thumbnail else piece["seams"]
         x, y = int(pos[0]), int(pos[1])
         self.screen.blit(surface, (x, y))
-        seam_width = 3 if thumbnail else 6
-        shadow_width = 4 if thumbnail else 8
-        for edge in seams:
+        seam_width = 2 if thumbnail else 4
+        for edge_index, edge in enumerate(seams):
             points = [(x + px, y + py) for px, py in edge]
-            shadow = [(px + 2, py + 3) for px, py in points]
-            if len(shadow) >= 2:
-                pygame.draw.lines(self.screen, (12, 14, 20), False, shadow, shadow_width)
-                pygame.draw.lines(self.screen, (255, 255, 255), False, points, seam_width)
-                pygame.draw.lines(self.screen, (214, 222, 235), False, points, 1)
+            colors = piece["seam_colors"][edge_index]
+            # 每一小段直接采用图片该位置的像素颜色，避免白色拼接缝。
+            for i, color in enumerate(colors):
+                if i + 1 < len(points):
+                    pygame.draw.line(self.screen, color, points[i], points[i + 1], seam_width)
 
     def draw_decorative_frame(self, rect):
         """在完成的整张拼图外绘制可切换的装饰相框。"""
