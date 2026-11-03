@@ -302,19 +302,9 @@ class PuzzleGame:
         piece["x"], piece["y"] = piece["tx"], piece["ty"]
 
     def draw_piece(self, piece, pos, thumbnail=False):
-        """只绘制拼图内部接缝；整张拼图的最外轮廓保持无描边。"""
+        """直接绘制抗锯齿拼图块，避免额外接缝描线造成图像发虚。"""
         surface = piece["thumb"] if thumbnail else piece["surface"]
-        seams = piece["thumb_seams"] if thumbnail else piece["seams"]
-        x, y = int(pos[0]), int(pos[1])
-        self.screen.blit(surface, (x, y))
-        seam_width = 2 if thumbnail else 4
-        for edge_index, edge in enumerate(seams):
-            points = [(x + px, y + py) for px, py in edge]
-            colors = piece["seam_colors"][edge_index]
-            # 每一小段直接采用图片该位置的像素颜色，避免白色拼接缝。
-            for i, color in enumerate(colors):
-                if i + 1 < len(points):
-                    pygame.draw.line(self.screen, color, points[i], points[i + 1], seam_width)
+        self.screen.blit(surface, (int(pos[0]), int(pos[1])))
 
     def is_puzzle_solved(self):
         if not self.image:
