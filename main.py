@@ -92,7 +92,7 @@ class PuzzleGame:
         pieces = []
         ids = list(range(self.rows * self.cols))
         random.shuffle(ids)
-        thumb_size = min(90, (340 - (self.cols - 1) * 8) // self.cols)
+        thumb_size = min(90, (340 - (self.cols - 1) * 8) // self.cols, (300 - (self.rows - 1) * 8) // self.rows)
         for tray_index, idx in enumerate(ids):
             row, col = divmod(idx, self.cols)
             x0, y0 = col * cell_w, row * cell_h
@@ -107,7 +107,7 @@ class PuzzleGame:
                 "id": idx, "row": row, "col": col, "surface": surface,
                 "thumb": thumb, "thumb_size": thumb_size,
                 "tx": 730 + tray_col * (thumb_size + 8),
-                "ty": 275 + tray_row * (thumb_size + 8),
+                "ty": 265 + tray_row * (thumb_size + 8),
                 "w": w, "h": h, "x": 0, "y": 0, "placed": False
             })
         self.pieces = pieces
@@ -116,7 +116,7 @@ class PuzzleGame:
     def shuffle_sliding(self):
         """生成可解的滑块排列，0 代表空格。"""
         count = self.rows * self.cols
-        order = list(range(count))
+        order = list(range(1, count)) + [0]
         blank = count - 1
         previous = -1
         for _ in range(max(120, count * 35)):
