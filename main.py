@@ -50,6 +50,7 @@ class PuzzleGame:
         self.started = None
         self.elapsed = 0
         self.show_preview = False
+        self.frame_style = 0
         self.mode = "drag"  # drag: 拖放拼图；slide: 格子滑动拼图
         self.sliding_order = []
         self.message = "先选择一张图片，开始你的拼图挑战！"
@@ -304,6 +305,34 @@ class PuzzleGame:
                 pygame.draw.lines(self.screen, (255, 255, 255), False, points, seam_width)
                 pygame.draw.lines(self.screen, (214, 222, 235), False, points, 1)
 
+    def draw_decorative_frame(self, rect):
+        """在完成的整张拼图外绘制可切换的装饰相框。"""
+        styles = [
+            {"name": "经典木纹", "outer": (92, 57, 35), "inner": (190, 139, 79), "highlight": (232, 195, 132)},
+            {"name": "鎏金典雅", "outer": (72, 55, 28), "inner": (196, 155, 68), "highlight": (255, 226, 150)},
+            {"name": "深色典藏", "outer": (28, 34, 46), "inner": (104, 119, 142), "highlight": (190, 204, 222)},
+            {"name": "樱花粉", "outer": (111, 60, 78), "inner": (220, 151, 174), "highlight": (255, 220, 231)},
+            {"name": "简约白框", "outer": (220, 226, 235), "inner": (135, 148, 166), "highlight": (255, 255, 255)},
+        ]
+        style = styles[self.frame_style]
+        outer = rect.inflate(26, 26)
+        pygame.draw.rect(self.screen, style["outer"], outer, border_radius=5)
+        pygame.draw.rect(self.screen, style["highlight"], outer, 2, border_radius=5)
+        pygame.draw.rect(self.screen, style["inner"], outer.inflate(-8, -8), 3, border_radius=3)
+        pygame.draw.rect(self.screen, style["highlight"], outer.inflate(-16, -16), 1, border_radius=2)
+        for px in (outer.left + 8, outer.right - 8):
+            for py in (outer.top + 8, outer.bottom - 8):
+                pygame.draw.circle(self.screen, style["highlight"], (px, py), 3)
+
+    def is_puzzle_solved(self):
+        if not self.image:
+            return False
+        if self.mode == "slide":
+            return self.sliding_order == list(range(1, self.rows * self.cols)) + [0]
+        return bool(self.pieces) and all(
+            p["placed"] and p.get("placed_slot") == p["id"] for p in self.pieces
+        )
+
     def draw(self):
         self.screen.fill(BG)
         title = self.big.render("拼图工坊", True, WHITE)
@@ -364,6 +393,9 @@ class PuzzleGame:
             piece = self.dragging
             self.draw_piece(piece, (piece["x"], piece["y"]))
 
+        if self.is_puzzle_solved():
+            self.draw_decorative_frame(board_area)
+
         elapsed = int(time.time() - self.started) if self.started else self.elapsed
         stats = f"难度：{self.rows} × {self.cols}     步数：{self.moves}     用时：{elapsed // 60:02d}:{elapsed % 60:02d}"
         self.screen.blit(self.small.render(stats, True, WHITE), (735, 575))
@@ -375,6 +407,8 @@ class PuzzleGame:
         self.make_button("shuffle", pygame.Rect(735, 630, 104, 38), "重新打乱", bool(self.image))
         self.make_button("preview", pygame.Rect(850, 630, 104, 38), "参考图提示", bool(self.image))
         self.make_button("mode", pygame.Rect(965, 630, 117, 38), "切换：滑块" if self.mode == "drag" else "切换：拖放", bool(self.image))
+        frame_names = ["木纹", "鎏金", "典藏", "樱花粉", "白框"]
+        self.make_button("frame", pygame.Rect(965, 575, 117, 38), "相框：" + frame_names[self.frame_style], bool(self.image))
         pygame.display.flip()
 
     def handle_click(self, pos):
@@ -396,6 +430,9 @@ class PuzzleGame:
             elif name == "mode" and self.image:
                 self.mode = "slide" if self.mode == "drag" else "drag"
                 self.new_game(None)
+            elif name == "frame" and self.image:
+                self.frame_style = (self.frame_style + 1) % 5
+                self.message = "相框已更换：" + ["经典木纹", "鎏金典雅", "深色典藏", "樱花粉", "简约白框"][self.frame_style]
             return True
         return False
 
